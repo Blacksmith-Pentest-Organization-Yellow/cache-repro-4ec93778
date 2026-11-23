@@ -1,0 +1,49 @@
+name: Reviewed cache
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation
+        required: true
+        type: choice
+        options:
+          - save
+          - restore
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  canary:
+    runs-on: blacksmith-staging-2vcpu-ubuntu-2404
+    steps:
+      - name: Checkout PR
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+      - name: Write safe marker
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'save' && github.ref_name == 'review-canary-4ec93778'
+        run: |
+          mkdir -p /tmp/bs-probe-review-key-ad8b5cf49974d36e
+          printf '%s\n' 'REVIEW_CANARY_85af6619f7530ccae904c537' > /tmp/bs-probe-review-key-ad8b5cf49974d36e/marker
+      - name: Save cache
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'save' && github.ref_name == 'review-canary-4ec93778'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/bs-probe-review-key-ad8b5cf49974d36e
+          key: review-key-ad8b5cf49974d36e
+      - name: Restore cache
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'restore')
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/bs-probe-review-key-ad8b5cf49974d36e
+          key: review-key-ad8b5cf49974d36e
+      - name: Report safe result
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'restore')
+        run: |
+          echo "CACHE_HIT=${{ steps.restore.outputs.cache-hit }}"
+          if test -f /tmp/bs-probe-review-key-ad8b5cf49974d36e/marker; then cat /tmp/bs-probe-review-key-ad8b5cf49974d36e/marker; else echo CACHE_MISS; fi
+      - name: Run contributor test script
+        if: github.event_name == 'pull_request'
+        run: |
+          if test -f contributor-proof.sh; then bash contributor-proof.sh; else echo NO_CONTRIBUTOR_SCRIPT; fi
